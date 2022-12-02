@@ -1,0 +1,249 @@
+---
+title: "Individual_Project_1"
+author: "Gabriel Leornas BSIT-2A"
+date: "2022-12-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Packages that will be needed 
+
+```{r, run}
+library("twitteR") 
+library(dplyr)
+library(tidyr)
+library("plotly")
+library(ggplot2)
+library(RColorBrewer)
+library(tidytext)
+library(rtweet)
+library(tm)
+library(slam)
+library(wordcloud)
+library(wordcloud2)
+library(corpus)
+```
+
+
+##1. Extract from twitter using your developer's credentials. Choose any keyword you want. 
+
+
+
+#Set-up credentials
+
+```{r, credentials}
+CONSUMER_SECRET <-"2vmVGAlukrEnyO9f20nEtJfv96GEFBFbe7e8CuwFGl9ozY9kSi"
+CONSUMER_KEY <-"l5CSikp1YC2oBdmLh08DDMDoc"
+ACCESS_SECRET <- "dNFeJKTMdBixOaJBn6YXBsOCaybvBWBw8YxvnuTBgeApu" 
+ACCESS_TOKEN <- "1596107281610858498-FjtGw5XzODkRVyfEGvjQX5xo8bPIF4" 
+
+
+```
+
+
+
+#connect to twitter app
+
+```{r, commect}
+setup_twitter_oauth(consumer_key = CONSUMER_KEY,
+                    consumer_secret = CONSUMER_SECRET,
+                    access_token = ACCESS_TOKEN,
+                    access_secret = ACCESS_SECRET)
+```
+
+
+
+##2. Get 10000 observations "excluding retweets.
+
+
+
+#Getting a data
+#it would take few minutes to load which depend the number of data you need
+
+#but when you already save this data as a file you can skip this part.
+
+```{r, num2}
+trendTweets <- searchTwitter("#Anime -filter:retweets",
+                             n = 10000,
+                             lang = "en",
+                             since = "2022-11-20",
+                             until = "2022-11-30",
+                             retryOnRateLimit = 120)
+
+trendTweets
+save(trendTweetsDF,file = "trendingTweetsDF.Rdata")
+
+```
+
+```{r, head}
+head(trendTweets)
+```
+
+
+
+#Converting data into dataframe
+```{r, conver}
+trendTweetsDF <- twListToDF(trendTweets)
+class(trendTweetsDF)
+names(trendTweetsDF)
+View(trendTweetsDF)
+head(trendTweetsDF)[1:5]
+head(trendTweetsDF$text)[1:5]
+
+```
+
+#Saving the data into a file
+
+```{r, trendT}
+save(trendTweetsDF,file = "trendingTweetsDF.Rdata")
+load(file = "trendingTweetsDF.Rdata")
+```
+
+
+
+#Checking for missing values in a data frame
+
+```{r, check}
+sapply(trendTweetsDF, function(x) sum(is.na(x)))
+```
+
+#Subsetting using the dplyr()package
+
+```{r, subset}
+tweetsDF <- trendTweetsDF %>%
+  select(screenName,text,created,statusSource)
+```
+
+#saving file as Rdata
+
+```{r, save}
+save(tweetsDF, file = "tweetsDF.Rdata")
+load(file = "tweetsDf.Rdata")
+```
+
+
+
+##3. Plot the time series from the date created. with legends.
+
+
+
+#plotting time series graph using plot() by rtweet package base on the date created.
+
+```{r, oneseven}
+ggplot(data = tweetsDF, aes(x = created), fill = tweetsDF) +
+  geom_histogram(aes(fill = ..count..)) + 
+  theme(legend.position="right",
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab("Time") + ylab("Number of tweets") + 
+  scale_fill_gradient(low = "aquamarine4", high = "midnightblue")
+```
+
+
+##4. Plot a graph (any graph you want)  based on the type of device - found in Source
+#- that the user use. Include the legends.
+
+
+
+```{r, graph}
+encodeSource <- function(x) {
+  if(grepl(">Twitter for iPhone</a>", x)){
+    "iphone"
+  }else if(grepl(">Twitter for iPad</a>", x)){
+    "ipad"
+  }else if(grepl(">Twitter for Android</a>", x)){
+    "android"
+  } else if(grepl(">Twitter Web Client</a>", x)){
+    "Web"
+  } else if(grepl(">Twitter for Windows Phone</a>", x)){
+    "windows phone"
+  }else if(grepl(">dlvr.it</a>", x)){
+    "dlvr.it"
+  }else if(grepl(">IFTTT</a>", x)){
+    "ifttt"
+  }else if(grepl(">Facebook</a>", x)){
+    "facebook"
+  }else {
+    "others"
+  }
+}
+
+
+tweetsDF$tweetSource = sapply(tweetsDF$statusSource, 
+                              encodeSource)
+
+tweet_appSource <- tweetsDF %>% 
+  select(tweetSource) %>%
+  group_by(tweetSource) %>%
+  summarize(count=n()) %>%
+  arrange(desc(count)) 
+
+Source_subset <- subset(tweet_appSource,count >10)
+```
+
+
+
+```{r, df}
+dataDF <- data.frame(
+  category = tweet_appSource$tweetSource,
+  count = tweet_appSource$count
+)
+
+dataDF$fraction = dataDF$count / sum(dataDF$count)
+dataDF$percentage = dataDF$count / sum(dataDF$count) * 100
+dataDF$ymax = cumsum(dataDF$fraction)
+dataDF$ymin = c(0, head(dataDF$ymax, n=-1))
+dataDF$roundP = round(dataDF$percentage, digits = 2)
+```
+
+
+
+#plotting using geom_bar() - bar graph
+
+```{r, graph2}
+ggplot(tweetsDF[tweetsDF$tweetSource != 'others',], aes(tweetSource, fill = tweetSource)) +
+  geom_bar() +
+  theme(legend.position="right",
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Number of tweets") +
+  ggtitle("Tweets by Source")
+```
+
+
+
+##5. Create a wordcloud from the screenName
+
+
+
+#Using wordcloud() package but using a shape pentagon 
+
+```{r, cloud}
+tweet_appScreen <- tweetsDF %>%
+  select(screenName) %>%
+  group_by(screenName) %>%
+  summarize(count=n()) %>%
+  arrange(desc(count)) 
+
+```
+
+#convert to Corpus
+
+```{r, convert}
+namesCorpus <- Corpus(VectorSource(tweetsDF$screenName))  #using ScreenName
+class(tweetsDF$screenName)
+
+```
+
+#Running the code using the wordcloud()
+
+```{r, wordcloudTWO}
+wordcloud2(data=tweet_appScreen, 
+           size=0.8, 
+           color='random-light',
+           shape = 'pentagon')
+
+```
